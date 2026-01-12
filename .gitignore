@@ -1,14 +1,9 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -20,97 +15,50 @@ lib64/
 parts/
 sdist/
 var/
+wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*,cover
-.hypothesis/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
-# IPython Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# celery beat schedule file
-celerybeat-schedule
-
-# dotenv
-.env
-
-# virtualenv
+# Virtual Environment
 venv/
+env/
 ENV/
+.venv
 
-# Spyder project settings
-.spyderproject
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# Rope project settings
-.ropeproject
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
 
-*.memmap
-*.png
-*.zip
-*.npz
-*.npy
-*.jpg
-*.jpeg
-.idea
-*.txt
-.idea/*
-*.png
-# *.nii.gz  # nifti files needed for example_data for github actions tests
-*.nii
-*.tif
-*.bmp
+# nnUNet data directories (user-specific)
+nnUNet_data/
+nnUNet_data_preprocessed/
+nnUNet_data_results/
+inference_data/
+predictions/
+copied_weights/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+wandb/
+
+# Model weights (too large for git)
+*.pth
 *.pkl
-*.xml
-*.pkl
-*.pdf
-*.png
-*.jpg
-*.jpeg
+checkpoint_*.pth
 
-*.model
-
-!documentation/assets/scribble_example.png
+# Temporary files
+*.tmp
+*.temp

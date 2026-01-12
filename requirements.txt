@@ -1,0 +1,29 @@
+# Core dependencies for microCT inference pipeline
+torch>=2.1.2
+nibabel>=5.0.0
+numpy>=1.24.0
+
+# nnUNet dependencies
+acvl-utils>=0.2.3,<0.3
+dynamic-network-architectures>=0.4.1,<0.5
+batchgenerators>=0.25.1
+batchgeneratorsv2>=0.3.0
+
+# Scientific computing
+scipy
+scikit-learn
+scikit-image>=0.19.3
+SimpleITK>=2.2.1
+pandas
+
+# Utilities
+tqdm
+matplotlib
+seaborn
+yacs
+einops
+blosc2>=3.0.0b1
+tifffile
+imagecodecs
+requests
+graphviz
