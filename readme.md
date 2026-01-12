@@ -107,7 +107,7 @@ source venv/bin/activate
 # 2. Set environment variable (REQUIRED - this tells nnUNet where to find model weights)
 export nnUNet_results="/path/to/your/nnUNet_results"
 # For example: export nnUNet_results="$HOME/nnUNet_results"
-# Or: export nnUNet_results="/DATA/summer_students/process_OO/microCT/nnUNet_data_results"
+# Or: export nnUNet_results="/path/to/microCT/nnUNet_data_results"
 
 # 3. Install model weights from microct_weights.zip (if not already installed)
 # Download from: https://drive.google.com/file/d/18dqXBgxCrPt1nS-S1A2vGK9Hhk1tp1ej/view?usp=sharing
@@ -124,8 +124,8 @@ python3 prepare_data_for_inference.py \
 
 # 5. Run inference with automatic ensembling (uses all available folds)
 python3 run_inference.py \
-    --input_dir /DATA/summer_students/process_OO/microCT/inference_data \
-    --output_dir /DATA/summer_students/process_OO/microCT/predictions \
+    --input_dir /path/to/microCT/inference_data \
+    --output_dir /path/to/microCT/predictions \
     --results_dir $nnUNet_results \
     --dataset_id 1 \
     --configuration 3d_fullres
