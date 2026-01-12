@@ -37,6 +37,34 @@ def find_model_weights(results_dir: str, dataset_id: int = 1,
         f"Dataset{dataset_id:03d}_microCT"
     ]
     
+    # First try the new structure (folds as subdirectories)
+    for dataset_name in dataset_names:
+        model_dir = results_path / dataset_name / f"nnUNetTrainer__nnUNetPlans__{configuration}"
+        if model_dir.exists():
+            # Find all available folds
+            fold_folders = subdirs(str(model_dir), prefix='fold_', join=False)
+            fold_folders = [f for f in fold_folders if f != 'fold_all']
+            available_folds = []
+            
+            for fold_folder in fold_folders:
+                checkpoint_file = model_dir / fold_folder / "checkpoint_final.pth"
+                if checkpoint_file.exists():
+                    fold_num = int(fold_folder.split('_')[-1])
+                    available_folds.append(fold_num)
+            
+            if available_folds:
+                # If specific fold requested, check if it exists
+                if fold is not None:
+                    if fold in available_folds:
+                        return str(model_dir), [fold]
+                    else:
+                        print(f"Warning: Fold {fold} not found. Available folds: {available_folds}")
+                        return str(model_dir), available_folds
+                else:
+                    # Return all available folds
+                    return str(model_dir), sorted(available_folds)
+    
+    # Fallback to old structure (fold in directory name)
     for dataset_name in dataset_names:
         model_dir = results_path / dataset_name / f"nnUNetTrainer__nnUNetPlans__{configuration}__fold_0"
         if model_dir.exists():
@@ -219,7 +247,7 @@ def run_inference(input_dir: str,
     print(f"\nRunning inference on images in: {input_dir}")
     predictor.predict_from_files(
         list_of_lists_or_source_folder=input_dir,
-        output_folder=str(output_path),
+        output_folder_or_list_of_truncated_output_files=str(output_path),
         save_probabilities=False,
         overwrite=True,
         num_processes_preprocessing=4,
@@ -294,7 +322,11 @@ def main():
             raise FileNotFoundError(
                 f"Could not find trained model. "
                 f"Expected location: {results_dir}/Dataset{args.dataset_id:03d}_*/"
-                f"nnUNetTrainer__nnUNetPlans__{args.configuration}__fold_0/"
+                f"nnUNetTrainer__nnUNetPlans__{args.configuration}/\n"
+                f"Make sure:\n"
+                f"  1. nnUNet_results environment variable is set: export nnUNet_results=\"/path/to/nnUNet_results\"\n"
+                f"  2. Model weights are installed from model_weights.zip\n"
+                f"  3. Or specify --results_dir or --model_dir directly"
             )
         
         print(f"Found model directory: {model_dir}")

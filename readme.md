@@ -7,6 +7,15 @@ Traditionally, given a new problem, a tailored solution needs to be manually des
 is prone to errors, not scalable and where success is overwhelmingly determined by the skill of the experimenter. Even 
 for experts, this process is anything but simple: there are not only many design choices and data properties that need to 
 be considered, but they are also tightly interconnected, rendering reliable manual pipeline optimization all but impossible! 
+## Example Results
+
+Here are example segmentation predictions from the microCT segmentation pipeline:
+
+![Example Predictions 1](figures/example_preds.png)
+
+![Example Predictions 2](figures/example_preds2.png)
+
+# nnU-Net Overview
 
 ![nnU-Net overview](documentation/assets/nnU-Net_overview.png)
 
@@ -82,6 +91,51 @@ Read these:
 - [Installation instructions](documentation/installation_instructions.md)
 - [Dataset conversion](documentation/dataset_format.md)
 - [Usage instructions](documentation/how_to_use_nnunet.md)
+
+The microct model weights are found at https://drive.google.com/file/d/18dqXBgxCrPt1nS-S1A2vGK9Hhk1tp1ej/view?usp=sharing. You may need to request access. 
+
+## Complete Workflow Example
+
+### Example: Running Inference on Scan CTID with Core Mask
+
+For the scan at `/path/to/microCT/data/CTID/` with core mask `CTID.core.mask.hdr`:
+
+```bash
+# 1. Activate virtual environment
+source venv/bin/activate
+
+# 2. Set environment variable (REQUIRED - this tells nnUNet where to find model weights)
+export nnUNet_results="/path/to/your/nnUNet_results"
+# For example: export nnUNet_results="$HOME/nnUNet_results"
+# Or: export nnUNet_results="/DATA/summer_students/process_OO/microCT/nnUNet_data_results"
+
+# 3. Install model weights from microct_weights.zip (if not already installed)
+# Download from: https://drive.google.com/file/d/18dqXBgxCrPt1nS-S1A2vGK9Hhk1tp1ej/view?usp=sharing
+nnUNetv2_install_pretrained_model_from_zip microct_weights.zip
+# Or manually: unzip microct_weights.zip -d $nnUNet_results/
+# Note: Warnings about nnUNet_raw and nnUNet_preprocessed can be ignored for inference-only use
+
+# 4. Prepare data for inference with core mask
+python3 prepare_data_for_inference.py \
+    --input_dir /path/to/microCT/data_UBC \
+    --output_dir /path/to/microCT/inference_data \
+    --case_ids CTID \
+    --mask CTID.core.mask.hdr
+
+# 5. Run inference with automatic ensembling (uses all available folds)
+python3 run_inference.py \
+    --input_dir /DATA/summer_students/process_OO/microCT/inference_data \
+    --output_dir /DATA/summer_students/process_OO/microCT/predictions \
+    --results_dir $nnUNet_results \
+    --dataset_id 1 \
+    --configuration 3d_fullres
+
+# 6. Check predictions
+ls -lh /path/to/microCT/predictions/
+# You should see: CTID.nii.gz
+```
+
+
 
 # Acknowledgements
 <img src="documentation/assets/HI_Logo.png" height="100px" />

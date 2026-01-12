@@ -102,12 +102,13 @@ class DataPreparer:
             print(f"Error loading {img_path}: {e}")
             raise
     
-    def process_case(self, case_id: str) -> bool:
+    def process_case(self, case_id: str, mask_path: Optional[str] = None) -> bool:
         """
         Process a single case for inference.
         
         Args:
             case_id: Case identifier (e.g., "5011")
+            mask_path: Optional path to mask file to apply (e.g., "5011.core.mask.hdr")
             
         Returns:
             Success status
@@ -150,29 +151,79 @@ class DataPreparer:
             else:
                 clipped_data = img_data
             
-            # Create new NIfTI image with clipped data
-            img_nifti_clipped = nib.Nifti1Image(clipped_data, img_nifti.affine)
+            # Apply mask if provided
+            if mask_path:
+                mask_file = Path(mask_path)
+                if not mask_file.is_absolute():
+                    # Try relative to source directory
+                    mask_file = src_dir / mask_path
+                
+                    if mask_file.exists():
+                        print(f"Applying mask: {mask_file}")
+                        # Load mask
+                        if mask_file.suffix == '.hdr' or mask_file.name.endswith('.mask.hdr'):
+                            # Analyze format mask - need to find corresponding .img file
+                            mask_img_path = mask_file.with_suffix('.img')
+                            if not mask_img_path.exists():
+                                # Try replacing .hdr with .img
+                                mask_img_path = Path(str(mask_file).replace('.hdr', '.img'))
+                            if mask_img_path.exists():
+                                mask_nifti = self.load_analyze_image(str(mask_img_path))
+                            else:
+                                print(f"Warning: Mask .img file not found for {mask_file}")
+                                print(f"  Tried: {mask_img_path}")
+                                mask_nifti = None
+                        elif mask_file.suffix in ['.nii', '.gz']:
+                            # NIfTI format mask
+                            mask_nifti = nib.load(str(mask_file))
+                        else:
+                            print(f"Warning: Unknown mask format: {mask_file.suffix}")
+                            mask_nifti = None
+                    
+                    if mask_nifti is not None:
+                        mask_data = mask_nifti.get_fdata()
+                        # Ensure mask matches image dimensions
+                        if mask_data.shape == clipped_data.shape:
+                            # Apply mask: set values outside mask to 0 (or minimum value)
+                            mask_binary = (mask_data > 0).astype(bool)
+                            clipped_data = clipped_data.copy()
+                            clipped_data[~mask_binary] = np.min(clipped_data[mask_binary]) if np.any(mask_binary) else 0
+                            print(f"  Mask applied: {np.sum(mask_binary):,} voxels inside mask")
+                        else:
+                            print(f"Warning: Mask shape {mask_data.shape} doesn't match image shape {clipped_data.shape}")
+                            print(f"  Skipping mask application")
+                else:
+                    print(f"Warning: Mask file not found: {mask_file}")
+            
+            # Create new NIfTI image with processed data
+            img_nifti_processed = nib.Nifti1Image(clipped_data, img_nifti.affine)
             
             # Save image in nnUNet format (with _0000 suffix for channel)
             output_path = self.output_dir / f"{case_id}_0000.nii.gz"
-            nib.save(img_nifti_clipped, str(output_path))
+            nib.save(img_nifti_processed, str(output_path))
             print(f"Saved image: {output_path}")
             
             return True
             
         except Exception as e:
             print(f"Error processing case {case_id}: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
-    def process_all_cases(self, case_ids: Optional[list] = None):
+    def process_all_cases(self, case_ids: Optional[list] = None, mask_paths: Optional[Dict[str, str]] = None):
         """
         Process all cases or specified cases.
         
         Args:
             case_ids: List of case IDs to process. If None, processes all available cases.
+            mask_paths: Dictionary mapping case_id to mask file path (e.g., {"5011": "5011.core.mask.hdr"})
         """
         if case_ids is None:
             case_ids = list(self.case_mapping.values())
+        
+        if mask_paths is None:
+            mask_paths = {}
         
         print(f"Processing {len(case_ids)} cases for inference...")
         print(f"Input directory: {self.input_dir}")
@@ -181,7 +232,8 @@ class DataPreparer:
         success_count = 0
         for case_id in case_ids:
             print(f"\nProcessing case: {case_id}")
-            if self.process_case(case_id):
+            mask_path = mask_paths.get(case_id)
+            if self.process_case(case_id, mask_path=mask_path):
                 success_count += 1
             else:
                 print(f"Failed to process case: {case_id}")
@@ -202,6 +254,10 @@ def main():
     parser.add_argument('--case_ids', nargs='+',
                        default=None,
                        help='Specific case IDs to process (e.g., 5011 5023). If not specified, processes all.')
+    parser.add_argument('--mask', type=str, default=None,
+                       help='Mask file to apply (e.g., 5011.core.mask.hdr). Will be searched relative to case directory.')
+    parser.add_argument('--masks', type=str, nargs='+', default=None,
+                       help='Mask files for each case (e.g., --masks 5011.core.mask.hdr 5023.core.mask.hdr). Must match order of --case_ids.')
     parser.add_argument('--enable_intensity_clipping', action='store_true', default=True,
                        help='Enable intensity clipping to remove streak artifacts')
     parser.add_argument('--no_intensity_clipping', action='store_true',
@@ -222,8 +278,22 @@ def main():
         upper_percentile=args.upper_percentile
     )
     
+    # Build mask_paths dictionary
+    mask_paths = {}
+    if args.masks:
+        if args.case_ids and len(args.masks) == len(args.case_ids):
+            mask_paths = dict(zip(args.case_ids, args.masks))
+        else:
+            print("Warning: Number of masks must match number of case_ids")
+    elif args.mask:
+        # Apply same mask to all cases
+        if args.case_ids:
+            mask_paths = {case_id: args.mask for case_id in args.case_ids}
+        else:
+            print("Warning: --mask requires --case_ids to be specified")
+    
     # Process cases
-    preparer.process_all_cases(case_ids=args.case_ids)
+    preparer.process_all_cases(case_ids=args.case_ids, mask_paths=mask_paths if mask_paths else None)
     
     print("\nNext steps:")
     print("1. Run inference using:")
