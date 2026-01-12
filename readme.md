@@ -1,18 +1,4 @@
-# Welcome to the new nnU-Net!
-
-Click [here](https://github.com/MIC-DKFZ/nnUNet/tree/nnunetv1) if you were looking for the old one instead.
-
-Coming from V1? Check out the [TLDR Migration Guide](documentation/tldr_migration_guide_from_v1.md). Reading the rest of the documentation is still strongly recommended ;-)
-
-## **2025-10-23 There seems to be a [severe performance regression with torch 2.9.0 and 3D convs](https://github.com/pytorch/pytorch/issues/166122) (when using AMP). Please use torch 2.8.0 or lower with nnU-Net!**
-
-
-## **2024-04-18 UPDATE: New residual encoder UNet presets available!**
-Residual encoder UNet presets substantially improve segmentation performance.
-They ship for a variety of GPU memory targets. It's all awesome stuff, promised! 
-Read more :point_right: [here](documentation/resenc_presets.md) :point_left:
-
-Also check out our [new paper](https://arxiv.org/pdf/2404.09556.pdf) on systematically benchmarking recent developments in medical image segmentation. You might be surprised!
+# Micro CT Segmentation Code
 
 # What is nnU-Net?
 Image datasets are enormously diverse: image dimensionality (2D, 3D), modalities/input channels (RGB image, CT, MRI, microscopy, ...), 
@@ -96,46 +82,6 @@ Read these:
 - [Installation instructions](documentation/installation_instructions.md)
 - [Dataset conversion](documentation/dataset_format.md)
 - [Usage instructions](documentation/how_to_use_nnunet.md)
-
-Additional information:
-- [Learning from sparse annotations (scribbles, slices)](documentation/ignore_label.md)
-- [Region-based training](documentation/region_based_training.md)
-- [Manual data splits](documentation/manual_data_splits.md)
-- [Pretraining and finetuning](documentation/pretraining_and_finetuning.md)
-- [Intensity Normalization in nnU-Net](documentation/explanation_normalization.md)
-- [Manually editing nnU-Net configurations](documentation/explanation_plans_files.md)
-- [Extending nnU-Net](documentation/extending_nnunet.md)
-- [What is different in V2?](documentation/changelog.md)
-
-Competitions:
-- [AutoPET II](documentation/competitions/AutoPETII.md)
-
-[//]: # (- [Ignore label]&#40;documentation/ignore_label.md&#41;)
-
-## Where does nnU-Net perform well and where does it not perform?
-nnU-Net excels in segmentation problems that need to be solved by training from scratch, 
-for example: research applications that feature non-standard image modalities and input channels,
-challenge datasets from the biomedical domain, majority of 3D segmentation problems, etc . We have yet to find a 
-dataset for which nnU-Net's working principle fails!
-
-Note: On standard segmentation 
-problems, such as 2D RGB images in ADE20k and Cityscapes, fine-tuning a foundation model (that was pretrained on a large corpus of 
-similar images, e.g. Imagenet 22k, JFT-300M) will provide better performance than nnU-Net! That is simply because these 
-models allow much better initialization. Foundation models are not supported by nnU-Net as 
-they 1) are not useful for segmentation problems that deviate from the standard setting (see above mentioned 
-datasets), 2) would typically only support 2D architectures and 3) conflict with our core design principle of carefully adapting 
-the network topology for each dataset (if the topology is changed one can no longer transfer pretrained weights!) 
-
-## What happened to the old nnU-Net?
-The core of the old nnU-Net was hacked together in a short time period while participating in the Medical Segmentation 
-Decathlon challenge in 2018. Consequently, code structure and quality were not the best. Many features 
-were added later on and didn't quite fit into the nnU-Net design principles. Overall quite messy, really. And annoying to work with.
-
-nnU-Net V2 is a complete overhaul. The "delete everything and start again" kind. So everything is better 
-(in the author's opinion haha). While the segmentation performance [remains the same](https://docs.google.com/spreadsheets/d/13gqjIKEMPFPyMMMwA1EML57IyoBjfC3-QCTn4zRN_Mg/edit?usp=sharing), a lot of cool stuff has been added. 
-It is now also much easier to use it as a development framework and to manually fine-tune its configuration to new 
-datasets. A big driver for the reimplementation was also the emergence of [Helmholtz Imaging](http://helmholtz-imaging.de), 
-prompting us to extend nnU-Net to more image formats and domains. Take a look [here](documentation/changelog.md) for some highlights.
 
 # Acknowledgements
 <img src="documentation/assets/HI_Logo.png" height="100px" />
