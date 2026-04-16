@@ -56,7 +56,42 @@ class DataPreparer:
         
         # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)
-    
+
+    def _resolve_source_directory(self, case_id: str) -> Optional[Path]:
+        """
+        Find the directory that holds this case's image files.
+
+        Order: (1) legacy case_mapping subfolders, (2) input_dir/case_id,
+        (3) flat layout — input_dir contains case_id.img or case_id.nii.gz.
+        """
+        for dir_name, mapped_id in self.case_mapping.items():
+            if mapped_id == case_id:
+                p = self.input_dir / dir_name
+                if p.is_dir():
+                    return p
+        sub = self.input_dir / case_id
+        if sub.is_dir():
+            return sub
+        flat_img = self.input_dir / f"{case_id}.img"
+        flat_nii = self.input_dir / f"{case_id}.nii.gz"
+        if flat_img.is_file() or flat_nii.is_file():
+            return self.input_dir
+        return None
+
+    def _file_patterns_for_case(self, case_id: str) -> Dict[str, str]:
+        """Analyze/NIfTI filenames for this case (defaults if not in self.file_patterns)."""
+        if case_id in self.file_patterns:
+            return self.file_patterns[case_id]
+        return {"img": f"{case_id}.img", "nii": f"{case_id}.nii.gz"}
+
+    @staticmethod
+    def _squeeze_trailing_unit_axes(data: np.ndarray) -> np.ndarray:
+        """Drop trailing dimensions of size 1 (e.g. (Z,Y,X,1) from nib.get_fdata() vs (Z,Y,X) mask)."""
+        out = data
+        while out.ndim > 1 and out.shape[-1] == 1:
+            out = out[..., 0]
+        return out
+
     def clip_image_intensity(self, image_data: np.ndarray) -> np.ndarray:
         """
         Clip image intensity to remove streak artifacts.
@@ -88,13 +123,9 @@ class DataPreparer:
         """
         try:
             analyze_img = nib.analyze.load(img_path)
-            data = analyze_img.get_fdata()
+            data = DataPreparer._squeeze_trailing_unit_axes(analyze_img.get_fdata())
             affine = analyze_img.affine
-            
-            # Remove singleton dimension if present
-            if data.ndim == 4 and data.shape[3] == 1:
-                data = data.squeeze(axis=3)
-            
+
             nifti_img = nib.Nifti1Image(data, affine)
             return nifti_img
             
@@ -114,18 +145,14 @@ class DataPreparer:
             Success status
         """
         try:
-            # Find the source directory
-            src_dir = None
-            for dir_name, mapped_id in self.case_mapping.items():
-                if mapped_id == case_id:
-                    src_dir = self.input_dir / dir_name
-                    break
-            
+            src_dir = self._resolve_source_directory(case_id)
             if src_dir is None or not src_dir.exists():
                 print(f"Source directory not found for case {case_id}")
+                print(f"  Expected a subfolder in {self.input_dir}, a mapping in case_mapping, or "
+                      f"flat files {case_id}.img / {case_id}.nii.gz under {self.input_dir}")
                 return False
-            
-            patterns = self.file_patterns[case_id]
+
+            patterns = self._file_patterns_for_case(case_id)
             
             # Load image
             if "nii" in patterns and (src_dir / patterns["nii"]).exists():
@@ -144,7 +171,7 @@ class DataPreparer:
                 print(f"Converted Analyze to NIfTI for case {case_id}")
             
             # Apply intensity clipping
-            img_data = img_nifti.get_fdata()
+            img_data = self._squeeze_trailing_unit_axes(np.asarray(img_nifti.get_fdata()))
             if self.enable_intensity_clipping:
                 print(f"Applying intensity clipping for case {case_id}...")
                 clipped_data = self.clip_image_intensity(img_data)
@@ -181,8 +208,7 @@ class DataPreparer:
                             mask_nifti = None
                     
                     if mask_nifti is not None:
-                        mask_data = mask_nifti.get_fdata()
-                        # Ensure mask matches image dimensions
+                        mask_data = self._squeeze_trailing_unit_axes(np.asarray(mask_nifti.get_fdata()))
                         if mask_data.shape == clipped_data.shape:
                             # Apply mask: set values outside mask to 0 (or minimum value)
                             mask_binary = (mask_data > 0).astype(bool)
@@ -248,7 +274,7 @@ class DataPreparer:
 def main():
     parser = argparse.ArgumentParser(description='Prepare microCT data for inference')
     parser.add_argument('--input_dir', type=str, required=True,
-                       help='Input directory with raw data')
+                       help='Input directory with raw data (quote path if it contains spaces, e.g. "04 - 5011")')
     parser.add_argument('--output_dir', type=str, required=True,
                        help='Output directory for inference-ready data')
     parser.add_argument('--case_ids', nargs='+',

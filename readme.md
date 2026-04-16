@@ -96,31 +96,54 @@ The microct model weights are found at https://drive.google.com/file/d/18dqXBgxC
 
 ## Complete Workflow Example
 
+### nnU-Net environment variables
+
+nnU-Net reads three paths from the environment whenever its Python package loads (including `nnUNetv2_install_pretrained_model_from_zip`). You should set **all three** before running any command in this workflow; otherwise you will see messages that `nnUNet_raw` and/or `nnUNet_preprocessed` are not defined.
+
+- **`nnUNet_results`**: where pretrained weights are installed and where training would write checkpoints. This is the only path inference strictly needs for model files.
+- **`nnUNet_raw`** and **`nnUNet_preprocessed`**: required for planning, preprocessing, and training. For **inference-only** use with this demo, they can point to empty directories that already exist on disk.
+
+Pick a base directory and create the three folders once:
+
+```bash
+NNUNET_BASE="${NNUNET_BASE:-$HOME/nnUNet_data}"
+mkdir -p "$NNUNET_BASE/nnUNet_raw" "$NNUNET_BASE/nnUNet_preprocessed" "$NNUNET_BASE/nnUNet_results"
+export nnUNet_raw="$NNUNET_BASE/nnUNet_raw"
+export nnUNet_preprocessed="$NNUNET_BASE/nnUNet_preprocessed"
+export nnUNet_results="$NNUNET_BASE/nnUNet_results"
+```
+
+More detail: [documentation/setting_up_paths.md](documentation/setting_up_paths.md).
+
 ### Example: Running Inference on Scan CTID with Core Mask
 
 For the scan at `/path/to/microCT/data/CTID/` with core mask `CTID.core.mask.hdr`:
+
+**Paths with spaces:** Some case folders are named like `04 - 5011`. The shell splits on spaces unless you **quote** the path, e.g. `--input_dir "/path/to/data_UBC/04 - 5011/"`.
 
 ```bash
 # 1. Activate virtual environment
 source venv/bin/activate
 
-# 2. Set environment variable (REQUIRED - this tells nnUNet where to find model weights)
-export nnUNet_results="/path/to/your/nnUNet_results"
-# For example: export nnUNet_results="$HOME/nnUNet_results"
-# Or: export nnUNet_results="/path/to/microCT/nnUNet_data_results"
+# 2. Set nnU-Net paths (all three — see "nnU-Net environment variables" above)
+NNUNET_BASE="${NNUNET_BASE:-$HOME/nnUNet_data}"
+mkdir -p "$NNUNET_BASE/nnUNet_raw" "$NNUNET_BASE/nnUNet_preprocessed" "$NNUNET_BASE/nnUNet_results"
+export nnUNet_raw="$NNUNET_BASE/nnUNet_raw"
+export nnUNet_preprocessed="$NNUNET_BASE/nnUNet_preprocessed"
+export nnUNet_results="$NNUNET_BASE/nnUNet_results"
 
 # 3. Install model weights from microct_weights.zip (if not already installed)
 # Download from: https://drive.google.com/file/d/18dqXBgxCrPt1nS-S1A2vGK9Hhk1tp1ej/view?usp=sharing
-nnUNetv2_install_pretrained_model_from_zip microct_weights.zip
-# Or manually: unzip microct_weights.zip -d $nnUNet_results/
-# Note: Warnings about nnUNet_raw and nnUNet_preprocessed can be ignored for inference-only use
+nnUNetv2_install_pretrained_model_from_zip /path/to/microct_weights.zip
+# Or manually: unzip microct_weights.zip -d "$nnUNet_results/"
 
-# 4. Prepare data for inference with core mask
+# 4. Prepare data for inference (quote --input_dir if the folder name contains spaces)
 python3 prepare_data_for_inference.py \
-    --input_dir /path/to/microCT/data_UBC \
+    --input_dir "/path/to/microCT/data_UBC/04 - 5011" \
     --output_dir /path/to/microCT/inference_data \
-    --case_ids CTID \
-    --mask CTID.core.mask.hdr
+    --case_ids 5011 \
+    --mask 5011.Mask.hdr
+# Flat layout (all .img in one folder): use --input_dir /path/to/data_UBC --case_ids 5031
 
 # 5. Run inference with automatic ensembling (uses all available folds)
 python3 run_inference.py \
