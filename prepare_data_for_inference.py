@@ -321,11 +321,10 @@ def main():
     # Process cases
     preparer.process_all_cases(case_ids=args.case_ids, mask_paths=mask_paths if mask_paths else None)
     
-    print("\nNext steps:")
-    print("1. Run inference using:")
-    print("   python3 run_inference.py --input_dir", args.output_dir)
-    print("   or")
-    print("   nnUNetv2_predict -i", args.output_dir, "-o /path/to/predictions -d 1 -c 3d_fullres -f 0")
+    print("\nNext step — run inference (set nnUNet_results first):")
+    print("   nnUNetv2_predict -i", args.output_dir,
+          "-o /path/to/predictions -d 1 -c 3d_fullres -f 0 1 2 3")
+    print("   (List each fold after -f for ensembling; adjust if your model has different folds.)")
 
 
 if __name__ == "__main__":

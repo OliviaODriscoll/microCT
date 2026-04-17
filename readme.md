@@ -142,16 +142,19 @@ python3 prepare_data_for_inference.py \
     --input_dir "/path/to/microCT/data_UBC/04 - 5011" \
     --output_dir /path/to/microCT/inference_data \
     --case_ids 5011 \
-    --mask 5011.Mask.hdr
+    --mask 5011.core.Mask.hdr
 # Flat layout (all .img in one folder): use --input_dir /path/to/data_UBC --case_ids 5031
 
-# 5. Run inference with automatic ensembling (uses all available folds)
-python3 run_inference.py \
-    --input_dir /path/to/microCT/inference_data \
-    --output_dir /path/to/microCT/predictions \
-    --results_dir $nnUNet_results \
-    --dataset_id 1 \
-    --configuration 3d_fullres
+# 5. Run inference (nnUNetv2_predict; nnUNet_results must be set). -d can be 1 or Dataset001_MicroCT.
+# Pass every fold you want in the ensemble after -f (this model ships 0–3; nnU-Net’s default -f is 0–4).
+nnUNetv2_predict \
+    -i /path/to/microCT/inference_data \
+    -o /path/to/microCT/predictions \
+    -d 1 \
+    -c 3d_fullres \
+    -f 0 1 2 3
+
+# Single fold (no ensembling): -f 0
 
 # 6. Check predictions
 ls -lh /path/to/microCT/predictions/
