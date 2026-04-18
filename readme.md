@@ -96,6 +96,49 @@ The microct model weights are found at https://drive.google.com/file/d/18dqXBgxC
 
 ## Complete Workflow Example
 
+### Where the repository, scans, and nnU-Net data live
+
+These are **three separate things**; none of them has to sit inside another.
+
+| What | Purpose | Typical location (your choice) |
+|------|---------|----------------------------------|
+| **This repository** (`microCT-master` / clone) | Contains `prepare_data_for_inference.py` and nnU-Net code bundled here | Any folder, e.g. `C:\Users\you\code\microCT-master` or `/home/you/projects/microCT` |
+| **Your scan data** | Analyze `.img`/`.hdr` (and masks) per case | Any folder tree, e.g. `D:\data\microCT_UBC\04 - 5011\5011.img` |
+| **`nnUNet_*` directories** | Weights, raw, preprocessed (see below) | Any base path, e.g. `%USERPROFILE%\nnUNet_data` or `/shared/nnUNet_data` |
+
+**About `/path/to/...` in the examples:** those strings are **placeholders**, not literal paths. Replace them with **real** paths on your machine.
+
+- **`/path/to/microCT/data_UBC/...`** (or similar) means: *the folder where **you** store the microCT scans*, not the folder that contains the Git repo. In our UBC example, `data_UBC` was simply the name of a parent folder that held case subfolders like `04 - 5011`. Your folder can be named anything (e.g. `D:\Scans\projectX\case01\5011.img`).
+- **`--image`** must point to the actual **`.img`** file, e.g. `"D:\Scans\microCT_UBC\04 - 5011\5011.img"`.
+
+The clone of **microCT-master does not need to be** inside the scan directory or inside `nnUNet_*`. You only need to `cd` into the repo (or call scripts with full paths) when you run `python3 prepare_data_for_inference.py`.
+
+### Windows vs Linux (steps 2 and 3)
+
+The bash block below uses **Linux / macOS / Git Bash / WSL** syntax (`export`, `mkdir -p`).
+
+**Command Prompt (`cmd.exe`):**
+
+```bat
+set "NNUNET_BASE=%USERPROFILE%\nnUNet_data"
+mkdir "%NNUNET_BASE%\nnUNet_raw" 2>nul & mkdir "%NNUNET_BASE%\nnUNet_preprocessed" 2>nul & mkdir "%NNUNET_BASE%\nnUNet_results" 2>nul
+set "nnUNet_raw=%NNUNET_BASE%\nnUNet_raw"
+set "nnUNet_preprocessed=%NNUNET_BASE%\nnUNet_preprocessed"
+set "nnUNet_results=%NNUNET_BASE%\nnUNet_results"
+```
+
+**PowerShell (session only):**
+
+```powershell
+$env:NNUNET_BASE = "$env:USERPROFILE\nnUNet_data"
+New-Item -ItemType Directory -Force -Path "$env:NNUNET_BASE\nnUNet_raw", "$env:NNUNET_BASE\nnUNet_preprocessed", "$env:NNUNET_BASE\nnUNet_results" | Out-Null
+$env:nnUNet_raw = "$env:NNUNET_BASE\nnUNet_raw"
+$env:nnUNet_preprocessed = "$env:NNUNET_BASE\nnUNet_preprocessed"
+$env:nnUNet_results = "$env:NNUNET_BASE\nnUNet_results"
+```
+
+**Step 3 (`nnUNetv2_install_pretrained_model_from_zip`):** run it in the **same Python environment where nnU-Net is installed** (the same shell where `python -c "import nnunetv2"` works). Pass the **full path** to `microct_weights.zip`, not `/path/to/...`. If the command is “not found”, activate the correct conda/venv first, or ask IT for the interpreter where nnU-Net’s console scripts were installed (`which nnUNetv2_install_pretrained_model_from_zip` on Linux, `where nnUNetv2_install_pretrained_model_from_zip` on Windows).
+
 ### nnU-Net environment variables
 
 nnU-Net reads three paths from the environment whenever its Python package loads (including `nnUNetv2_install_pretrained_model_from_zip`). You should set **all three** before running any command in this workflow; otherwise you will see messages that `nnUNet_raw` and/or `nnUNet_preprocessed` are not defined.
