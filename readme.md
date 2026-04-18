@@ -137,7 +137,7 @@ $env:nnUNet_preprocessed = "$env:NNUNET_BASE\nnUNet_preprocessed"
 $env:nnUNet_results = "$env:NNUNET_BASE\nnUNet_results"
 ```
 
-**Step 3 (`nnUNetv2_install_pretrained_model_from_zip`):** run it in the **same Python environment where nnU-Net is installed** (the same shell where `python -c "import nnunetv2"` works). Pass the **full path** to `microct_weights.zip`, not `/path/to/...`. If the command is “not found”, activate the correct conda/venv first, or ask IT for the interpreter where nnU-Net’s console scripts were installed (`which nnUNetv2_install_pretrained_model_from_zip` on Linux, `where nnUNetv2_install_pretrained_model_from_zip` on Windows).
+**Step 3 (`nnUNetv2_install_pretrained_model_from_zip`):** run it in the **same Python environment where nnU-Net is installed** (the same shell where `python -c "import nnunetv2"` works). Pass the **full path** to `microct_weights.zip`
 
 ### nnU-Net environment variables
 
