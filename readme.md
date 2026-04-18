@@ -117,9 +117,9 @@ More detail: [documentation/setting_up_paths.md](documentation/setting_up_paths.
 
 ### Example: Running Inference on Scan CTID with Core Mask
 
-For the scan at `/path/to/microCT/data/CTID/` with core mask `CTID.core.mask.hdr`:
+For an Analyze volume (`5011.img` + `5011.hdr` under a case folder) and optional core mask `5011.core.Mask.hdr` in the same folder:
 
-**Paths with spaces:** Some case folders are named like `04 - 5011`. The shell splits on spaces unless you **quote** the path, e.g. `--input_dir "/path/to/data_UBC/04 - 5011/"`.
+**Paths with spaces:** Quote paths that contain spaces, e.g. `--image "/path/to/data_UBC/04 - 5011/5011.img"`.
 
 ```bash
 # 1. Activate virtual environment
@@ -137,13 +137,12 @@ export nnUNet_results="$NNUNET_BASE/nnUNet_results"
 nnUNetv2_install_pretrained_model_from_zip /path/to/microct_weights.zip
 # Or manually: unzip microct_weights.zip -d "$nnUNet_results/"
 
-# 4. Prepare data for inference (quote --input_dir if the folder name contains spaces)
+# 4. Prepare data for inference (--image is the scan file; omit --core_mask to skip masking)
 python3 prepare_data_for_inference.py \
-    --input_dir "/path/to/microCT/data_UBC/04 - 5011" \
+    --image "/path/to/microCT/data_UBC/04 - 5011/5011.img" \
     --output_dir /path/to/microCT/inference_data \
-    --case_ids 5011 \
-    --mask 5011.core.Mask.hdr
-# Flat layout (all .img in one folder): use --input_dir /path/to/data_UBC --case_ids 5031
+    --core_mask 5011.core.Mask.hdr
+# Relative --core_mask is resolved next to the image directory. Omit --core_mask for no mask.
 
 # 5. Run inference (nnUNetv2_predict; nnUNet_results must be set). -d can be 1 or Dataset001_MicroCT.
 # Pass every fold you want in the ensemble after -f (this model ships 0–3; nnU-Net’s default -f is 0–4).

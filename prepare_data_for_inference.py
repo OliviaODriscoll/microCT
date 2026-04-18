@@ -1,330 +1,271 @@
 #!/usr/bin/env python3
 """
 Prepare microCT data for inference.
-Converts Analyze format (.img/.hdr) to NIfTI format and prepares data for nnUNet inference.
+Loads Analyze format (.img + .hdr) and writes NIfTI for nnUNet inference.
 This script is for inference only - no training data preparation needed.
+
+Pass --image (path to the Analyze .img file) and --output_dir. Optional --core_mask applies a mask;
+if omitted, no masking is performed.
 """
 
-import os
 import argparse
-import numpy as np
-import nibabel as nib
+import traceback
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
+
+import nibabel as nib
+import numpy as np
+
+
+def case_id_from_image_path(image_path: Path) -> str:
+    """Stem used for nnUNet output CASE_0000.nii.gz (from Analyze .img basename)."""
+    name = image_path.name
+    if name.lower().endswith(".img"):
+        return name[: -len(".img")]
+    return image_path.stem
 
 
 class DataPreparer:
-    def __init__(self, 
-                 input_dir: str,
-                 output_dir: str,
-                 enable_intensity_clipping: bool = True,
-                 lower_percentile: float = 1.0,
-                 upper_percentile: float = 99.0):
-        """
-        Initialize the data preparer.
-        
-        Args:
-            input_dir: Path to raw data directory
-            output_dir: Path to output directory for inference-ready data
-            enable_intensity_clipping: Apply intensity clipping to remove streak artifacts
-            lower_percentile: Lower percentile for clipping (default: 1.0)
-            upper_percentile: Upper percentile for clipping (default: 99.0)
-        """
-        self.input_dir = Path(input_dir)
-        self.output_dir = Path(output_dir)
+    def __init__(
+        self,
+        output_dir: str,
+        enable_intensity_clipping: bool = True,
+        lower_percentile: float = 1.0,
+        upper_percentile: float = 99.0,
+    ):
+        self.output_dir = Path(output_dir).resolve()
         self.enable_intensity_clipping = enable_intensity_clipping
         self.lower_percentile = lower_percentile
         self.upper_percentile = upper_percentile
-        
-        # Case mapping (directory name to case ID)
-        # Update this mapping to match your data structure
-        self.case_mapping = {
-            "04 - 5011": "5011",
-            "07 - 5023": "5023", 
-            "10 - 4327": "4327",
-            "11 - 4331": "4331"
-        }
-        
-        # File patterns for each case
-        # Update these patterns to match your file naming convention
-        self.file_patterns = {
-            "5011": {"img": "5011.img", "nii": "5011.nii.gz"},
-            "5023": {"img": "5023.img"},
-            "4327": {"img": "4327.img"},
-            "4331": {"img": "4331.res2x.img"}
-        }
-        
-        # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)
-
-    def _resolve_source_directory(self, case_id: str) -> Optional[Path]:
-        """
-        Find the directory that holds this case's image files.
-
-        Order: (1) legacy case_mapping subfolders, (2) input_dir/case_id,
-        (3) flat layout — input_dir contains case_id.img or case_id.nii.gz.
-        """
-        for dir_name, mapped_id in self.case_mapping.items():
-            if mapped_id == case_id:
-                p = self.input_dir / dir_name
-                if p.is_dir():
-                    return p
-        sub = self.input_dir / case_id
-        if sub.is_dir():
-            return sub
-        flat_img = self.input_dir / f"{case_id}.img"
-        flat_nii = self.input_dir / f"{case_id}.nii.gz"
-        if flat_img.is_file() or flat_nii.is_file():
-            return self.input_dir
-        return None
-
-    def _file_patterns_for_case(self, case_id: str) -> Dict[str, str]:
-        """Analyze/NIfTI filenames for this case (defaults if not in self.file_patterns)."""
-        if case_id in self.file_patterns:
-            return self.file_patterns[case_id]
-        return {"img": f"{case_id}.img", "nii": f"{case_id}.nii.gz"}
 
     @staticmethod
     def _squeeze_trailing_unit_axes(data: np.ndarray) -> np.ndarray:
-        """Drop trailing dimensions of size 1 (e.g. (Z,Y,X,1) from nib.get_fdata() vs (Z,Y,X) mask)."""
         out = data
         while out.ndim > 1 and out.shape[-1] == 1:
             out = out[..., 0]
         return out
 
     def clip_image_intensity(self, image_data: np.ndarray) -> np.ndarray:
-        """
-        Clip image intensity to remove streak artifacts.
-        
-        Args:
-            image_data: Input image data as numpy array
-            
-        Returns:
-            Clipped image data
-        """
         lower_bound = np.percentile(image_data, self.lower_percentile)
         upper_bound = np.percentile(image_data, self.upper_percentile)
-        clipped_data = np.clip(image_data, lower_bound, upper_bound)
-        
-        print(f"  Intensity clipping: [{lower_bound:.2f}, {upper_bound:.2f}] "
-              f"(percentiles: {self.lower_percentile}%, {self.upper_percentile}%)")
-        
-        return clipped_data
-    
+        clipped = np.clip(image_data, lower_bound, upper_bound)
+        print(
+            f"  Intensity clipping: [{lower_bound:.2f}, {upper_bound:.2f}] "
+            f"(percentiles: {self.lower_percentile}%, {self.upper_percentile}%)"
+        )
+        return clipped
+
     def load_analyze_image(self, img_path: str) -> nib.Nifti1Image:
-        """
-        Load Analyze format image and convert to NIfTI.
-        
-        Args:
-            img_path: Path to .img file
-            
-        Returns:
-            NIfTI image object
-        """
         try:
             analyze_img = nib.analyze.load(img_path)
             data = DataPreparer._squeeze_trailing_unit_axes(analyze_img.get_fdata())
-            affine = analyze_img.affine
-
-            nifti_img = nib.Nifti1Image(data, affine)
-            return nifti_img
-            
+            return nib.Nifti1Image(data, analyze_img.affine)
         except Exception as e:
             print(f"Error loading {img_path}: {e}")
             raise
-    
-    def process_case(self, case_id: str, mask_path: Optional[str] = None) -> bool:
+
+    def load_analyze_volume(self, image_path: Path) -> nib.Nifti1Image:
+        """Load primary scan; must be an Analyze pair (.img with .hdr alongside)."""
+        image_path = image_path.resolve()
+        if not image_path.is_file():
+            raise FileNotFoundError(f"Image not found: {image_path}")
+        if not image_path.name.lower().endswith(".img"):
+            raise ValueError(f"Expected Analyze .img path, got: {image_path}")
+        hdr = image_path.with_suffix(".hdr")
+        if not hdr.is_file():
+            print(f"Warning: No matching .hdr next to image: {hdr}")
+        print(f"Loading Analyze volume: {image_path}")
+        return self.load_analyze_image(str(image_path))
+
+    @staticmethod
+    def _resolve_path_case_insensitive(target: Path) -> Path:
+        """If target is missing, look for the same filename with different case in target.parent."""
+        if target.is_file():
+            return target
+        parent = target.parent
+        if not parent.is_dir():
+            return target
+        want = target.name.lower()
+        for p in parent.iterdir():
+            if p.is_file() and p.name.lower() == want:
+                return p
+        return target
+
+    @staticmethod
+    def _find_paired_analyze_img(mask_hdr: Path) -> Optional[Path]:
         """
-        Process a single case for inference.
-        
+        Locate the .img next to an Analyze .hdr. Tries exact names, then case-insensitive
+        basename match, then same stem as .hdr with any .img casing (e.g. .mask. vs .Mask.).
+        """
+        parent = mask_hdr.parent
+        stem = mask_hdr.stem
+        candidates = [
+            mask_hdr.with_suffix(".img"),
+            Path(str(mask_hdr).replace(".hdr", ".img")),
+            Path(str(mask_hdr).replace(".HDR", ".img")),
+        ]
+        for c in candidates:
+            r = DataPreparer._resolve_path_case_insensitive(c)
+            if r.is_file():
+                return r
+        for p in parent.iterdir():
+            if not p.is_file() or p.suffix.lower() != ".img":
+                continue
+            if p.stem.lower() == stem.lower():
+                return p
+        return None
+
+    def _load_mask_nifti(self, mask_file: Path) -> Optional[nib.Nifti1Image]:
+        mask_file = self._resolve_path_case_insensitive(mask_file)
+        if not mask_file.is_file():
+            print(f"Warning: Mask file not found: {mask_file}")
+            return None
+        print(f"Applying mask: {mask_file}")
+        if mask_file.suffix.lower() == ".hdr" or mask_file.name.lower().endswith(".mask.hdr"):
+            mask_img_path = self._find_paired_analyze_img(mask_file)
+            if mask_img_path is not None:
+                return self.load_analyze_image(str(mask_img_path))
+            tried = mask_file.with_suffix(".img")
+            print(f"Warning: Mask .img file not found for {mask_file} (tried exact name and case-insensitive match; e.g. {tried})")
+            return None
+        if mask_file.name.endswith(".nii.gz") or mask_file.suffix.lower() == ".nii":
+            return nib.load(str(mask_file))
+        print(f"Warning: Unknown mask format: {mask_file.name}")
+        return None
+
+    def process_image(
+        self,
+        image_path: str,
+        core_mask: Optional[str] = None,
+        case_id: Optional[str] = None,
+    ) -> bool:
+        """
+        Load image from disk, optional core mask, clip, save nnUNet-style CASE_0000.nii.gz.
+
         Args:
-            case_id: Case identifier (e.g., "5011")
-            mask_path: Optional path to mask file to apply (e.g., "5011.core.mask.hdr")
-            
-        Returns:
-            Success status
+            image_path: Path to Analyze .img (paired .hdr in the same directory)
+            core_mask: Optional path to mask (.hdr/.img pair or NIfTI). Relative paths are
+                resolved against the image file's directory.
+            case_id: Output case name; default is derived from the image filename.
         """
         try:
-            src_dir = self._resolve_source_directory(case_id)
-            if src_dir is None or not src_dir.exists():
-                print(f"Source directory not found for case {case_id}")
-                print(f"  Expected a subfolder in {self.input_dir}, a mapping in case_mapping, or "
-                      f"flat files {case_id}.img / {case_id}.nii.gz under {self.input_dir}")
-                return False
+            img_path = Path(image_path).expanduser()
+            cid = case_id.strip() if case_id else case_id_from_image_path(img_path)
 
-            patterns = self._file_patterns_for_case(case_id)
-            
-            # Load image
-            if "nii" in patterns and (src_dir / patterns["nii"]).exists():
-                # Use existing NIfTI file
-                img_nifti = nib.load(src_dir / patterns["nii"])
-                print(f"Loaded existing NIfTI for case {case_id}")
-            else:
-                # Convert from Analyze format
-                img_path = src_dir / patterns["img"]
-                
-                if not img_path.exists():
-                    print(f"Image file not found: {img_path}")
-                    return False
-                
-                img_nifti = self.load_analyze_image(str(img_path))
-                print(f"Converted Analyze to NIfTI for case {case_id}")
-            
-            # Apply intensity clipping
-            img_data = self._squeeze_trailing_unit_axes(np.asarray(img_nifti.get_fdata()))
+            img_nifti = self.load_analyze_volume(img_path)
+            img_data = DataPreparer._squeeze_trailing_unit_axes(np.asarray(img_nifti.get_fdata()))
+
             if self.enable_intensity_clipping:
-                print(f"Applying intensity clipping for case {case_id}...")
+                print(f"Applying intensity clipping for case {cid}...")
                 clipped_data = self.clip_image_intensity(img_data)
             else:
                 clipped_data = img_data
-            
-            # Apply mask if provided
-            if mask_path:
-                mask_file = Path(mask_path)
+
+            if core_mask:
+                mask_file = Path(core_mask).expanduser()
                 if not mask_file.is_absolute():
-                    # Try relative to source directory
-                    mask_file = src_dir / mask_path
-                
-                    if mask_file.exists():
-                        print(f"Applying mask: {mask_file}")
-                        # Load mask
-                        if mask_file.suffix == '.hdr' or mask_file.name.endswith('.mask.hdr'):
-                            # Analyze format mask - need to find corresponding .img file
-                            mask_img_path = mask_file.with_suffix('.img')
-                            if not mask_img_path.exists():
-                                # Try replacing .hdr with .img
-                                mask_img_path = Path(str(mask_file).replace('.hdr', '.img'))
-                            if mask_img_path.exists():
-                                mask_nifti = self.load_analyze_image(str(mask_img_path))
-                            else:
-                                print(f"Warning: Mask .img file not found for {mask_file}")
-                                print(f"  Tried: {mask_img_path}")
-                                mask_nifti = None
-                        elif mask_file.suffix in ['.nii', '.gz']:
-                            # NIfTI format mask
-                            mask_nifti = nib.load(str(mask_file))
-                        else:
-                            print(f"Warning: Unknown mask format: {mask_file.suffix}")
-                            mask_nifti = None
-                    
-                    if mask_nifti is not None:
-                        mask_data = self._squeeze_trailing_unit_axes(np.asarray(mask_nifti.get_fdata()))
-                        if mask_data.shape == clipped_data.shape:
-                            # Apply mask: set values outside mask to 0 (or minimum value)
-                            mask_binary = (mask_data > 0).astype(bool)
-                            clipped_data = clipped_data.copy()
-                            clipped_data[~mask_binary] = np.min(clipped_data[mask_binary]) if np.any(mask_binary) else 0
-                            print(f"  Mask applied: {np.sum(mask_binary):,} voxels inside mask")
-                        else:
-                            print(f"Warning: Mask shape {mask_data.shape} doesn't match image shape {clipped_data.shape}")
-                            print(f"  Skipping mask application")
-                else:
-                    print(f"Warning: Mask file not found: {mask_file}")
-            
-            # Create new NIfTI image with processed data
-            img_nifti_processed = nib.Nifti1Image(clipped_data, img_nifti.affine)
-            
-            # Save image in nnUNet format (with _0000 suffix for channel)
-            output_path = self.output_dir / f"{case_id}_0000.nii.gz"
-            nib.save(img_nifti_processed, str(output_path))
+                    mask_file = (img_path.parent / mask_file).resolve()
+                mask_nifti = self._load_mask_nifti(mask_file)
+                if mask_nifti is not None:
+                    mask_data = DataPreparer._squeeze_trailing_unit_axes(np.asarray(mask_nifti.get_fdata()))
+                    if mask_data.shape == clipped_data.shape:
+                        mask_binary = (mask_data > 0).astype(bool)
+                        clipped_data = clipped_data.copy()
+                        clipped_data[~mask_binary] = (
+                            np.min(clipped_data[mask_binary]) if np.any(mask_binary) else 0
+                        )
+                        print(f"  Mask applied: {np.sum(mask_binary):,} voxels inside mask")
+                    else:
+                        print(
+                            f"Warning: Mask shape {mask_data.shape} does not match "
+                            f"image shape {clipped_data.shape}; skipping mask"
+                        )
+
+            out = nib.Nifti1Image(clipped_data, img_nifti.affine)
+            output_path = self.output_dir / f"{cid}_0000.nii.gz"
+            nib.save(out, str(output_path))
             print(f"Saved image: {output_path}")
-            
             return True
-            
         except Exception as e:
-            print(f"Error processing case {case_id}: {e}")
-            import traceback
+            print(f"Error processing image: {e}")
             traceback.print_exc()
             return False
-    
-    def process_all_cases(self, case_ids: Optional[list] = None, mask_paths: Optional[Dict[str, str]] = None):
-        """
-        Process all cases or specified cases.
-        
-        Args:
-            case_ids: List of case IDs to process. If None, processes all available cases.
-            mask_paths: Dictionary mapping case_id to mask file path (e.g., {"5011": "5011.core.mask.hdr"})
-        """
-        if case_ids is None:
-            case_ids = list(self.case_mapping.values())
-        
-        if mask_paths is None:
-            mask_paths = {}
-        
-        print(f"Processing {len(case_ids)} cases for inference...")
-        print(f"Input directory: {self.input_dir}")
-        print(f"Output directory: {self.output_dir}")
-        
-        success_count = 0
-        for case_id in case_ids:
-            print(f"\nProcessing case: {case_id}")
-            mask_path = mask_paths.get(case_id)
-            if self.process_case(case_id, mask_path=mask_path):
-                success_count += 1
-            else:
-                print(f"Failed to process case: {case_id}")
-        
-        print(f"\n{'='*60}")
-        print(f"Processing complete!")
-        print(f"Successfully processed: {success_count}/{len(case_ids)} cases")
-        print(f"Output directory: {self.output_dir}")
-        print(f"{'='*60}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Prepare microCT data for inference')
-    parser.add_argument('--input_dir', type=str, required=True,
-                       help='Input directory with raw data (quote path if it contains spaces, e.g. "04 - 5011")')
-    parser.add_argument('--output_dir', type=str, required=True,
-                       help='Output directory for inference-ready data')
-    parser.add_argument('--case_ids', nargs='+',
-                       default=None,
-                       help='Specific case IDs to process (e.g., 5011 5023). If not specified, processes all.')
-    parser.add_argument('--mask', type=str, default=None,
-                       help='Mask file to apply (e.g., 5011.core.mask.hdr). Will be searched relative to case directory.')
-    parser.add_argument('--masks', type=str, nargs='+', default=None,
-                       help='Mask files for each case (e.g., --masks 5011.core.mask.hdr 5023.core.mask.hdr). Must match order of --case_ids.')
-    parser.add_argument('--enable_intensity_clipping', action='store_true', default=True,
-                       help='Enable intensity clipping to remove streak artifacts')
-    parser.add_argument('--no_intensity_clipping', action='store_true',
-                       help='Disable intensity clipping')
-    parser.add_argument('--lower_percentile', type=float, default=1.0,
-                       help='Lower percentile for intensity clipping (default: 1.0)')
-    parser.add_argument('--upper_percentile', type=float, default=99.0,
-                       help='Upper percentile for intensity clipping (default: 99.0)')
-    
+    parser = argparse.ArgumentParser(description="Prepare microCT data for inference")
+    parser.add_argument(
+        "--image",
+        type=str,
+        required=True,
+        help="Path to input Analyze volume (.img; .hdr must sit beside it)",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        required=True,
+        help="Directory for nnUNet-style output (CASE_0000.nii.gz)",
+    )
+    parser.add_argument(
+        "--core_mask",
+        type=str,
+        default=None,
+        help="Optional core mask (.hdr with paired .img, or NIfTI). Relative paths are "
+        "resolved next to --image.",
+    )
+    parser.add_argument(
+        "--case_id",
+        type=str,
+        default=None,
+        help="Case id for output filename (default: derived from --image basename)",
+    )
+    parser.add_argument(
+        "--predictions_dir",
+        type=str,
+        default=None,
+        help="If set, print a sample nnUNetv2_predict command using this output folder.",
+    )
+    parser.add_argument(
+        "--enable_intensity_clipping",
+        action="store_true",
+        default=True,
+        help="Enable intensity clipping",
+    )
+    parser.add_argument(
+        "--no_intensity_clipping",
+        action="store_true",
+        help="Disable intensity clipping",
+    )
+    parser.add_argument("--lower_percentile", type=float, default=1.0)
+    parser.add_argument("--upper_percentile", type=float, default=99.0)
+
     args = parser.parse_args()
-    
-    # Create preparer
+
     preparer = DataPreparer(
-        input_dir=args.input_dir,
         output_dir=args.output_dir,
         enable_intensity_clipping=args.enable_intensity_clipping and not args.no_intensity_clipping,
         lower_percentile=args.lower_percentile,
-        upper_percentile=args.upper_percentile
+        upper_percentile=args.upper_percentile,
     )
-    
-    # Build mask_paths dictionary
-    mask_paths = {}
-    if args.masks:
-        if args.case_ids and len(args.masks) == len(args.case_ids):
-            mask_paths = dict(zip(args.case_ids, args.masks))
-        else:
-            print("Warning: Number of masks must match number of case_ids")
-    elif args.mask:
-        # Apply same mask to all cases
-        if args.case_ids:
-            mask_paths = {case_id: args.mask for case_id in args.case_ids}
-        else:
-            print("Warning: --mask requires --case_ids to be specified")
-    
-    # Process cases
-    preparer.process_all_cases(case_ids=args.case_ids, mask_paths=mask_paths if mask_paths else None)
-    
-    print("\nNext step — run inference (set nnUNet_results first):")
-    print("   nnUNetv2_predict -i", args.output_dir,
-          "-o /path/to/predictions -d 1 -c 3d_fullres -f 0 1 2 3")
-    print("   (List each fold after -f for ensembling; adjust if your model has different folds.)")
+
+    ok = preparer.process_image(
+        args.image,
+        core_mask=args.core_mask,
+        case_id=args.case_id,
+    )
+
+    if not ok:
+        raise SystemExit(1)
+
+    print("\nNext step — run inference (set nnUNet_results / nnUNet_raw env vars as needed):")
+    out_in = str(Path(args.output_dir).resolve())
+    if args.predictions_dir:
+        pred = str(Path(args.predictions_dir).resolve())
+        print(f"   nnUNetv2_predict -i {out_in} -o {pred} -d DATASET_ID -c 3d_fullres -f 0")
+    else:
+        print(f"   nnUNetv2_predict -i {out_in} -o PREDICTIONS_DIR -d DATASET_ID -c 3d_fullres -f 0")
+    print("   Use your dataset id for -d, list folds after -f for ensembling, and a real predictions path for -o.")
 
 
 if __name__ == "__main__":
