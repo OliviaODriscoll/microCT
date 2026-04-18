@@ -79,36 +79,20 @@ class DataPreparer:
         return self.load_analyze_image(str(image_path))
 
     @staticmethod
-    def _resolve_path_case_insensitive(target: Path) -> Path:
-        """If target is missing, look for the same filename with different case in target.parent."""
-        if target.is_file():
-            return target
-        parent = target.parent
-        if not parent.is_dir():
-            return target
-        want = target.name.lower()
-        for p in parent.iterdir():
-            if p.is_file() and p.name.lower() == want:
-                return p
-        return target
-
-    @staticmethod
     def _find_paired_analyze_img(mask_hdr: Path) -> Optional[Path]:
         """
-        Locate the .img next to an Analyze .hdr. Tries exact names, then case-insensitive
-        basename match, then same stem as .hdr with any .img casing (e.g. .mask. vs .Mask.).
+        Locate the .img next to an Analyze .hdr: exact .img names first, then any .img in
+        the same folder whose stem matches the .hdr stem ignoring case (e.g. .mask. vs .Mask.).
         """
         parent = mask_hdr.parent
         stem = mask_hdr.stem
         candidates = [
             mask_hdr.with_suffix(".img"),
             Path(str(mask_hdr).replace(".hdr", ".img")),
-            Path(str(mask_hdr).replace(".HDR", ".img")),
         ]
         for c in candidates:
-            r = DataPreparer._resolve_path_case_insensitive(c)
-            if r.is_file():
-                return r
+            if c.is_file():
+                return c
         for p in parent.iterdir():
             if not p.is_file() or p.suffix.lower() != ".img":
                 continue
@@ -117,7 +101,6 @@ class DataPreparer:
         return None
 
     def _load_mask_nifti(self, mask_file: Path) -> Optional[nib.Nifti1Image]:
-        mask_file = self._resolve_path_case_insensitive(mask_file)
         if not mask_file.is_file():
             print(f"Warning: Mask file not found: {mask_file}")
             return None
@@ -127,7 +110,7 @@ class DataPreparer:
             if mask_img_path is not None:
                 return self.load_analyze_image(str(mask_img_path))
             tried = mask_file.with_suffix(".img")
-            print(f"Warning: Mask .img file not found for {mask_file} (tried exact name and case-insensitive match; e.g. {tried})")
+            print(f"Warning: Mask .img file not found for {mask_file} (tried {tried} and same-stem .img in folder)")
             return None
         if mask_file.name.endswith(".nii.gz") or mask_file.suffix.lower() == ".nii":
             return nib.load(str(mask_file))
